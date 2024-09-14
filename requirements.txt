@@ -1,1 +1,8 @@
+numpy
 starsim
+
+panel
+watchfiles
+pygments
+hvplot
+jupyter_bokeh
