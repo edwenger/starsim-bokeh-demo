@@ -15,7 +15,7 @@ In terms of interactivity:
 
 import random
 import starsim as ss
-from demog import HouseholdResidence, HouseholdPregnancy
+from household import HouseholdResidence, HouseholdPregnancy, HouseholdNetwork
 
 
 def init_matriarch_sim():
@@ -23,11 +23,18 @@ def init_matriarch_sim():
     people = ss.People(n_agents=1)
 
     sim = ss.Sim(
-        people=people, diseases=[], networks=[], 
+        people=people, 
+        diseases=[],
+        networks=[
+            ss.PrenatalNet(),
+            HouseholdNetwork(),
+            ], 
         demographics=[
             HouseholdPregnancy(fertility_rate=500), 
-            HouseholdResidence()],
-        n_years=50,
+            HouseholdResidence(),
+            # ss.Deaths(death_rate=30),  # TODO: understand odd behavior
+            ],
+        n_years=100,
         rand_seed=random.randint(0, 1000))
     
     sim.initialize()
