@@ -58,25 +58,28 @@ class HouseholdPregnancy(ss.Pregnancy):
 
 class HouseholdResidence(ss.Demographics):
     
-    uid = itertools.count()  # unique index generator (TODO: adapt to IndexArr pattern??)
-
     def __init__(self, pars=None, metadata=None, **kwargs):
+
         super().__init__()
+
         self.default_pars(
             relocate_age=ss.uniform(18, 25),
         )
         self.update_pars(pars, **kwargs)
+
         self.add_states(
             ss.FloatArr("huid", label="Household UID"),
             ss.FloatArr("ti_relocate", label="Time of relocation to own household"),
         )
+
+        self.uid_gen = itertools.count(start=0, step=1)  # unique next household index generator
 
     def update(self):
         sim = self.sim
 
         relocations = (sim.people.female & (self.ti_relocate <= sim.ti)).uids
         self.ti_relocate[relocations] = np.nan
-        self.huid[relocations] = [next(self.uid) for _ in range(len(relocations))]
+        self.huid[relocations] = [next(self.uid_gen) for _ in range(len(relocations))]
 
         emigrations = (~sim.people.female & (self.ti_relocate <= sim.ti)).uids
         sim.people.request_death(emigrations)
