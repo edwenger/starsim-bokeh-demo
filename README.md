@@ -7,3 +7,5 @@ To explore interactive animation yourself in a browser, run the following Python
 `panel serve demo.ipynb --autoreload`
 
 Then navigate to served site at: http://localhost:5006/demo
+
+![StarSim interactive household demographic simulation](figures/starsim_household_demographic_interactive.png)
