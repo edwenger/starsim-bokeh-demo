@@ -25,7 +25,7 @@ class HouseholdPregnancy(ss.Pregnancy):
         hh_demog = self.sim.demographics.get("householdresidence")
         if hh_demog is not None and len(conceive_uids) > 0:
             hh_demog.huid[new_uids] = hh_demog.huid[conceive_uids]
-            hh_demog.ti_relocate[new_uids] = self.sim.ti + hh_demog.pars.relocate_age.rvs(new_uids) - self.sim.people.age[new_uids]
+            hh_demog.age_relocate[new_uids] = hh_demog.pars.relocate_age.rvs(new_uids)
 
         return new_uids
     
@@ -69,7 +69,7 @@ class HouseholdResidence(ss.Demographics):
 
         self.add_states(
             ss.FloatArr("huid", label="Household UID"),
-            ss.FloatArr("ti_relocate", label="Time of relocation to own household"),
+            ss.FloatArr("age_relocate", label="Age of relocation to own household"),
         )
 
         self.uid_gen = itertools.count(start=0, step=1)  # unique next household index generator
@@ -77,16 +77,13 @@ class HouseholdResidence(ss.Demographics):
     def update(self):
         sim = self.sim
 
-        relocations = (sim.people.female & (self.ti_relocate <= sim.ti)).uids
-        self.ti_relocate[relocations] = np.nan
-        self.huid[relocations] = [next(self.uid_gen) for _ in range(len(relocations))]
+        relocations = (sim.people.female & (self.age_relocate <= sim.people.age)).uids
+        if len(relocations):
+            self.age_relocate[relocations] = np.nan
+            self.huid[relocations] = [next(self.uid_gen) for _ in range(len(relocations))]
 
-        emigrations = (~sim.people.female & (self.ti_relocate <= sim.ti)).uids
+        emigrations = (sim.people.male & (self.age_relocate <= sim.people.age)).uids
         sim.people.request_death(emigrations)
-
-        householdnet = self.sim.networks.get("householdnetwork")
-        if householdnet is not None:
-            householdnet.remove_uids(np.concatenate((relocations, emigrations)))
 
 
 class HouseholdNetwork(ss.Network):
