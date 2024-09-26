@@ -101,7 +101,7 @@ class HouseholdNetwork(ss.Network):
         hh_demog = self.sim.demographics.get("householdresidence")
         if hh_demog is not None:
 
-            # TODO: is there a vectorized way of doing this?
+            # TODO: is there a vectorized way of doing this? maybe it has to be done as a loop if e.g. there are twins
             for new_member_id in new_member_ids:
                 huid = hh_demog.huid[new_member_id]
 
@@ -109,7 +109,7 @@ class HouseholdNetwork(ss.Network):
                 hh_contacts = self.sim.people.uid[hh_demog.huid == huid]
                 hh_contacts = hh_contacts[hh_contacts != new_member_id]
 
-                p1 = np.concatenate((hh_contacts, np.repeat(new_member_id, len(hh_contacts))))
-                p2 = p1[::-1]
+                p1 = hh_contacts
+                p2 = np.repeat(new_member_id, len(hh_contacts))
                 self.append(p1=p1, p2=p2, beta=np.ones(len(p1)), huid=np.repeat(huid, len(p1)))
     
