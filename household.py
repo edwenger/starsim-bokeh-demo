@@ -82,6 +82,10 @@ class HouseholdResidence(ss.Demographics):
             self.age_relocate[relocations] = np.nan
             self.huid[relocations] = [next(self.uid_gen) for _ in range(len(relocations))]
 
+            householdnet = self.sim.networks.get("householdnetwork")
+            if householdnet is not None:
+                householdnet.remove_uids(relocations)
+
         emigrations = (sim.people.male & (self.age_relocate <= sim.people.age)).uids
         sim.people.request_death(emigrations)
 
