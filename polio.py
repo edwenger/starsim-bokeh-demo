@@ -1,9 +1,15 @@
 """
 Port of disease logic from poliosim with reference to original ImmunoInfection model
+
+Famulare et al. 2018 PLOS Biology https://doi.org/10.1371/journal.pbio.2002468
+Wong et al. 2023 Virus Evolution https://doi.org/10.1093/ve/vead044
+
+- Infection.pars.beta is mapped to fecal-oral dose parameter
+- Infection.rel_sus tracks current_immunity in OPV-equivalent antibody titers
+- Infection.rel_trans tracks viral_shed in CID50/g
 """
 
 import numpy as np
-import scipy.stats as stats
 import starsim as ss
 
 ss_int_ = ss.dtypes.int
@@ -17,7 +23,7 @@ class Polio(ss.Infection):
 
             # Required Infection parameters
             init_prev = ss.bernoulli(p=0.01),
-            beta = 5e-7, # fecal-oral-dose
+            beta = 5e-7,  # fecal-oral dose
 
             # Immunoinfection default coefficients
             theta_Nabs = dict(a=4.82, b=-0.30, c=3.31, d=-0.32),
@@ -47,12 +53,10 @@ class Polio(ss.Infection):
         # States
         self.add_states(
 
-            ss.FloatArr("current_immunity", label="Current immunity", default=1),  # default to naive immunity
             ss.FloatArr("prechallenge_immunity", label="Pre-challenge immunity", default=1),
             ss.FloatArr("postchallenge_peak_immunity", label="Post-challenge peak immunity"),
             ss.FloatArr("shed_duration", label="Shed duration"),
             ss.FloatArr("log10_peak_cid50", label="Log10 peak CID50"),
-            ss.FloatArr("viral_shed", label="Viral shed"),
 
             ss.BoolArr('is_WPV', label="Wild polio virus", default=True),  # adapted from "strain_type" enum in ImmunoInfection model
             # TODO: add derived classes for other strains e.g. Sabin-2 where is_WPV = False (heterotypic connectors?)
@@ -61,9 +65,11 @@ class Polio(ss.Infection):
             # Inherited from Infection
             # ss.BoolArr('susceptible', default=True, label='Susceptible'),
             # ss.BoolArr('infected', label='Infectious'),
-            # ss.FloatArr('rel_sus', default=1.0, label='Relative susceptibility'),
-            # ss.FloatArr('rel_trans', default=1.0, label='Relative transmission'),
             # ss.FloatArr('ti_infected', label='Time of infection'),
+
+            # Explicitly define appropriate default values + labels for inherited states
+            ss.FloatArr('rel_sus', default=1.0, label='Current immunity (titers)'),
+            ss.FloatArr('rel_trans', default=0.0, label='Viral shedding (CID50/g)'),
         )
 
     @property
@@ -73,6 +79,14 @@ class Polio(ss.Infection):
     @property
     def t_since_last_exposure(self):
         return (self.sim.ti - self.ti_infected) * self.sim.dt * 365  # TODO: update when sim.unit = 'day' is implemented
+
+    @property
+    def current_immunity(self):
+        return self.rel_sus
+
+    @property
+    def viral_shed(self):
+        return self.rel_trans
 
     def update_pre(self):
         super().update_pre()
@@ -89,27 +103,9 @@ class Polio(ss.Infection):
         # calculate shedding in infectious individuals
         self.update_viral_shed(**self.pars.viral_shedding)
     
-        # TODO: in principle, we could directly overload derived variables tracking roughly equivalent properties
-        #       and then expose @property methods as convenience functions for more familiar names?
-        #       that might make the abstraction of network code more straightforward?
-        self.rel_sus[:] = self.current_immunity
-        self.rel_trans[:] = self.viral_shed
-
-    # @property
-    # def current_immunity(self):
-    #     return self.rel_sus
-
-    # @property
-    # def viral_shed(self):
-    #     return self.rel_trans
-
-    # TODO: refactor base class in this general approach to abstract out a more flexible p_infection method
-
     def p_transmit(self, rel_trans_src, rel_sus_target, beta_per_dt):
-
-        # prob_infection = rel_trans_src * rel_sus_target * beta_per_dt  # ss.Infection base case
     
-        # dose = viral_shed * fecal_oral_dose
+        # Dose corresponds to: viral_shed[src] * fecal_oral_dose
         dose = rel_trans_src * beta_per_dt * 365  # TODO: update when sim.unit = 'day' is implemented
 
         pars = self.pars
@@ -120,6 +116,7 @@ class Polio(ss.Infection):
 
         return prob_infection
 
+    # TODO: remove if/when this abstraction of p_transmit out of make_new_cases is incorporated in base Infection class
     def make_new_cases(self):
         """
         Add new cases of module, through transmission, incidence, etc.
