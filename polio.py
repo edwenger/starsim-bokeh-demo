@@ -15,6 +15,14 @@ import starsim as ss
 ss_int_ = ss.dtypes.int
 
 
+sabin_scale_parameters = dict(WPV=2.3, OPV1=14, OPV2=8, OPV3=18)
+
+strain_take_modifiers= dict(WPV=1.0, OPV1=0.79, OPV2=0.92, OPV3=0.81)  # Based on estimate from Famulare 2018
+
+shed_duration_params = dict(OPV=dict(u=30.3, delta=1.16, sigma=1.86),
+                            WPV=dict(u=43.0, delta=1.16,sigma=1.69))
+
+
 class Polio(ss.Infection):
         
     def __init__(self, pars=None, *args, **kwargs):
@@ -29,7 +37,7 @@ class Polio(ss.Infection):
             theta_Nabs = dict(a=4.82, b=-0.30, c=3.31, d=-0.32),
             immunity_boost_dist = ss.normal(),  # (loc, scale) set on-the-fly in update_peak_immunity
 
-            shed_duration = dict(u=30.3, delta=1.16, sigma=1.86, u_WPV=43.0, sigma_WPV=1.69),
+            shed_duration = shed_duration_params['WPV'],
             shed_duration_dist = ss.lognorm_im(),  # (s, scale) set on-the-fly in update_shed_duration
 
             immunity_waning = dict(rate=0.87),
@@ -39,13 +47,8 @@ class Polio(ss.Infection):
 
             p_transmit = dict(alpha=0.44, gamma=0.46),
 
-            # TODO: sabin scale parameters by strain_type
-            # sabin_scale_parameters = np.array([2.3, 14, 8, 18], dtype=np.float32)  # WPV, S1, S2, S3
-            sabin_scale_parameter = 2.3,  # WPV
-
-            # TODO: setting-specific strain-take modifiers
-            # strain_take_modifier= np.array([1.0, 0.79, 0.92, 0.81], dtype=np.float32),  # Based on estimate from Famulare 2018.
-            strain_take_modifier = 1.0,  # WPV
+            sabin_scale_parameter = sabin_scale_parameters['WPV'],
+            strain_take_modifier = strain_take_modifiers['WPV'],
 
         )
         self.update_pars(pars=pars, **kwargs)
@@ -58,8 +61,6 @@ class Polio(ss.Infection):
             ss.FloatArr("shed_duration", label="Shed duration"),
             ss.FloatArr("log10_peak_cid50", label="Log10 peak CID50"),
 
-            ss.BoolArr('is_WPV', label="Wild polio virus", default=True),  # adapted from "strain_type" enum in ImmunoInfection model
-            # TODO: add derived classes for other strains e.g. Sabin-2 where is_WPV = False (heterotypic connectors?)
             # TODO: consider tracking "Exposed" state (as in poliosim) and also to avoid divide-by-zero errors in update_viral_shed
 
             # Inherited from Infection
@@ -200,25 +201,14 @@ class Polio(ss.Infection):
         # prevent immunity from decreasing due to challenge
         self.postchallenge_peak_immunity[uids] = self.prechallenge_immunity[uids] * np.maximum(1, theta_Nabs)
 
-    def update_shed_duration(self, uids, u=30.3, delta=1.16, sigma=1.86, u_WPV=43.0, sigma_WPV=1.69):
+    def update_shed_duration(self, uids, u=30.3, delta=1.16, sigma=1.86):
         """probability of shedding given Nab at time t (days post infection);
         assumes that individual was infected at t = 0; time is measured in days
         Equation S1 in Famulare 2018 PLOS Bio paper
         delta_t = time (days) since last infection -- survival curve follows lognormal distribution"""
 
-        # Default u and sigma
-        U = np.full(len(uids), u)
-        SIGMA = np.full(len(uids), sigma)
-
-        ### WPV_inds = np.nonzero(population.strain_type == pspar.strain_map('WPV'))[0]
-        WPV_inds = np.nonzero(self.is_WPV[uids])[0]
-
-        # Override u and sigma for WPV
-        U[WPV_inds] = u_WPV
-        SIGMA[WPV_inds] = sigma_WPV
-
-        mu = np.log(U) - np.log(delta) * np.log2(self.prechallenge_immunity[uids])
-        std = np.log(SIGMA)
+        mu = np.log(u) - np.log(delta) * np.log2(self.prechallenge_immunity[uids])
+        std = np.log(sigma)
 
         # NB: ss.Dist classes implicitly handle numpy-to-scipy.stats parameter-convention
         #     conversion via sync_pars() during __init__() or set() with (mean=mu, sigma=std) such that:
@@ -263,6 +253,39 @@ class Polio(ss.Infection):
             Smax)  # else
 
         self.log10_peak_cid50[infected_uids] = (1 - k * np.log2(self.prechallenge_immunity[infected_uids])) * peak_cid50_naiive
+
+
+class OPV1(Polio):
+    def __init__(self, pars=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_pars(
+            sabin_scale_parameter=sabin_scale_parameters['OPV1'],
+            strain_take_modifier=strain_take_modifiers['OPV1'],
+            shed_duration=shed_duration_params['OPV'],
+        )
+        self.update_pars(pars=pars, **kwargs)
+
+
+class OPV2(Polio):
+    def __init__(self, pars=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_pars(
+            sabin_scale_parameter=sabin_scale_parameters['OPV2'],
+            strain_take_modifier=strain_take_modifiers['OPV2'],
+            shed_duration=shed_duration_params['OPV'],
+        )
+        self.update_pars(pars=pars, **kwargs)
+
+
+class OPV3(Polio):
+    def __init__(self, pars=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_pars(
+            sabin_scale_parameter=sabin_scale_parameters['OPV3'],
+            strain_take_modifier=strain_take_modifiers['OPV3'],
+            shed_duration=shed_duration_params['OPV'],
+        )
+        self.update_pars(pars=pars, **kwargs)
 
 
 if __name__ == "__main__":
