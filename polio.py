@@ -21,10 +21,10 @@ class Polio(ss.Infection):
 
             # Immunoinfection default coefficients
             theta_Nabs = dict(a=4.82, b=-0.30, c=3.31, d=-0.32),
-            immunity_boost_normal = ss.normal(),  # (loc, scale) set on-the-fly in update_peak_immunity
+            immunity_boost_dist = ss.normal(),  # (loc, scale) set on-the-fly in update_peak_immunity
 
             shed_duration = dict(u=30.3, delta=1.16, sigma=1.86, u_WPV=43.0, sigma_WPV=1.69),
-            shed_quantile_uniform = ss.uniform(0, 1),  # TODO: can we remove scipy.stats custom handling below?
+            shed_duration_dist = ss.lognorm_im(),  # (s, scale) set on-the-fly in update_shed_duration
 
             immunity_waning = dict(rate=0.87),
 
@@ -198,8 +198,8 @@ class Polio(ss.Infection):
         Nabs = self.prechallenge_immunity[uids]
         means = a + b * np.log2(Nabs)
         stdevs = np.sqrt(np.maximum(c + d * np.log2(Nabs), 0))
-        self.pars.immunity_boost_normal.set(loc=means, scale=stdevs)
-        theta_Nabs = np.exp(self.pars.immunity_boost_normal.rvs(n=uids))
+        self.pars.immunity_boost_dist.set(loc=means, scale=stdevs)
+        theta_Nabs = np.exp(self.pars.immunity_boost_dist.rvs(n=uids))
         # prevent immunity from decreasing due to challenge
         self.postchallenge_peak_immunity[uids] = self.prechallenge_immunity[uids] * np.maximum(1, theta_Nabs)
 
@@ -223,14 +223,12 @@ class Polio(ss.Infection):
         mu = np.log(U) - np.log(delta) * np.log2(self.prechallenge_immunity[uids])
         std = np.log(SIGMA)
 
-        # scipy stats has weird implementation of parameters
-        # the shape parameter (s) is the same as the stdev
+        # NB: ss.Dist classes implicitly handle numpy-to-scipy.stats parameter-convention
+        #     conversion via sync_pars() during __init__() or set() with (mean=mu, sigma=std) such that:
+        # the shape parameter (s) is the same as the std
         # the scale parameter is the same as the e^(mu)
-        ### q = np.random.uniform(0, 1, len(uids))
-        q = self.pars.shed_quantile_uniform.rvs(n=uids)
-
-        # inverse lognormal survival curve sampling
-        self.shed_duration[uids] = stats.lognorm.isf(q, s=std, scale=np.exp(mu))
+        self.pars.shed_duration_dist.set(sigma=std, mean=mu)
+        self.shed_duration[uids] = self.pars.shed_duration_dist.rvs(n=uids)
 
     def update_current_immunity(self, rate=0.87):
         '''immunity after t months have passed since exposure'''
