@@ -19,8 +19,8 @@ sabin_scale_parameters = dict(WPV=2.3, OPV1=14, OPV2=8, OPV3=18)
 
 strain_take_modifiers= dict(WPV=1.0, OPV1=0.79, OPV2=0.92, OPV3=0.81)  # Based on estimate from Famulare 2018
 
-shed_duration_params = dict(OPV=dict(u=30.3, delta=1.16, sigma=1.86),
-                            WPV=dict(u=43.0, delta=1.16,sigma=1.69))
+shed_duration_params = dict(OPV=ss.Pars(u=30.3, delta=1.16, sigma=1.86),
+                            WPV=ss.Pars(u=43.0, delta=1.16,sigma=1.69))
 
 
 class Polio(ss.Infection):
@@ -34,18 +34,18 @@ class Polio(ss.Infection):
             beta = 5e-7,  # fecal-oral dose
 
             # Immunoinfection default coefficients
-            theta_Nabs = dict(a=4.82, b=-0.30, c=3.31, d=-0.32),
+            theta_Nabs = ss.Pars(a=4.82, b=-0.30, c=3.31, d=-0.32),
             immunity_boost_dist = ss.normal(),  # (loc, scale) set on-the-fly in update_peak_immunity
 
             shed_duration = shed_duration_params['WPV'],
             shed_duration_dist = ss.lognorm_im(),  # (s, scale) set on-the-fly in update_shed_duration
 
-            immunity_waning = dict(rate=0.87),
+            immunity_waning = ss.Pars(rate=0.87),
 
-            viral_shedding = dict(eta=1.65, v=0.17, epsilon=0.32),
-            peak_cid50 = dict(k=0.056, Smax=6.7, Smin=4.3, tau=12),
+            viral_shedding = ss.Pars(eta=1.65, v=0.17, epsilon=0.32),
+            peak_cid50 = ss.Pars(k=0.056, Smax=6.7, Smin=4.3, tau=12),
 
-            p_transmit = dict(alpha=0.44, gamma=0.46),
+            p_transmit = ss.Pars(alpha=0.44, gamma=0.46),
 
             sabin_scale_parameter = sabin_scale_parameters['WPV'],
             strain_take_modifier = strain_take_modifiers['WPV'],
