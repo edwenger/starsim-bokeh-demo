@@ -27,7 +27,7 @@ class Polio(ss.Infection):
         
     def __init__(self, pars=None, *args, **kwargs):
         super().__init__()
-        self.default_pars(
+        self.define_pars(
 
             # Required Infection parameters
             init_prev = ss.bernoulli(p=0.01),
@@ -54,7 +54,7 @@ class Polio(ss.Infection):
         self.update_pars(pars=pars, **kwargs)
 
         # States
-        self.add_states(
+        self.define_states(
 
             ss.FloatArr("prechallenge_immunity", label="Pre-challenge immunity", default=1),
             ss.FloatArr("postchallenge_peak_immunity", label="Post-challenge peak immunity"),
@@ -64,9 +64,9 @@ class Polio(ss.Infection):
             # TODO: consider tracking "Exposed" state (as in poliosim) and also to avoid divide-by-zero errors in update_viral_shed
 
             # Inherited from Infection
-            # ss.BoolArr('susceptible', default=True, label='Susceptible'),
-            # ss.BoolArr('infected', label='Infectious'),
-            # ss.FloatArr('ti_infected', label='Time of infection'),
+            # ss.State('susceptible', default=True, label='Susceptible'),
+            # ss.State('infected', label='Infectious'),
+            # ss.FloatArr('ti_infected', label='Time of infection' ),
 
             # Explicitly define appropriate default values + labels for inherited states
             ss.FloatArr('rel_sus', default=1.0, label='Current immunity (titers)'),
@@ -79,7 +79,7 @@ class Polio(ss.Infection):
     
     @property
     def t_since_last_exposure(self):
-        return (self.sim.ti - self.ti_infected) * self.sim.dt * 365  # TODO: update when sim.unit = 'day' is implemented
+        return (self.sim.ti - self.ti_infected) * self.sim.dt_year * 365  # TODO: update when sim.unit = 'day' is implemented
 
     @property
     def current_immunity(self):
@@ -89,8 +89,8 @@ class Polio(ss.Infection):
     def viral_shed(self):
         return self.rel_trans
 
-    def update_pre(self):
-        super().update_pre()
+    def step_state(self):
+        super().step_state()
 
         # waning of post-exposure immunity in non-naive individuals
         self.update_current_immunity(**self.pars.immunity_waning)
@@ -104,79 +104,23 @@ class Polio(ss.Infection):
         # calculate shedding in infectious individuals
         self.update_viral_shed(**self.pars.viral_shedding)
     
-    def p_transmit(self, rel_trans_src, rel_sus_target, beta_per_dt):
-    
+    # @staticmethod # In future, consider: @nb.njit(fastmath=True, parallel=True, cache=True), but no faster it seems
+    def compute_transmission(self, src, trg, rel_trans, rel_sus, beta_per_dt, randvals):
+        """ Compute the probability of a->b transmission """
+
         # Dose corresponds to: viral_shed[src] * fecal_oral_dose
-        dose = rel_trans_src * beta_per_dt * 365  # TODO: update when sim.unit = 'day' is implemented
+        dose = rel_trans[src] * beta_per_dt * 365  # TODO: update when sim.unit = 'day' is implemented
 
         pars = self.pars
         alpha = pars.p_transmit['alpha']
         gamma = pars.p_transmit['gamma']
 
-        prob_infection = (1 - (1 + dose / pars.sabin_scale_parameter) ** (-alpha * (rel_sus_target) ** -gamma)) * pars.strain_take_modifier
+        p_transmit = (1 - (1 + dose / pars.sabin_scale_parameter) ** (-alpha * (rel_sus[trg]) ** -gamma)) * pars.strain_take_modifier
 
-        return prob_infection
-
-    # TODO: remove if/when this abstraction of p_transmit out of make_new_cases is incorporated in base Infection class
-    def make_new_cases(self):
-        """
-        Add new cases of module, through transmission, incidence, etc.
-        
-        Common-random-number-safe transmission code works by mapping edges onto
-        slots.
-        """
-        new_cases = []
-        sources = []
-        networks = []
-        betamap = self._check_betas()
-
-        for i, (nkey,net) in enumerate(self.sim.networks.items()):
-            if not len(net):
-                break
-
-            nbetas = betamap[nkey]
-            edges = net.edges
-
-            rel_trans = self.rel_trans.asnew(self.infectious * self.rel_trans)
-            rel_sus   = self.rel_sus.asnew(self.susceptible * self.rel_sus)
-            p1p2b0 = [edges.p1, edges.p2, nbetas[0]]
-            p2p1b1 = [edges.p2, edges.p1, nbetas[1]]
-            for src, trg, beta in [p1p2b0, p2p1b1]:
-
-                # Skip networks with no transmission
-                if beta == 0:
-                    continue
-
-                # Calculate probability of a->b transmission.
-                beta_per_dt = net.beta_per_dt(disease_beta=beta, dt=self.sim.dt)
-                # p_transmit = rel_trans[src] * rel_sus[trg] * beta_per_dt
-                p_transmit = self.p_transmit(rel_trans[src], rel_sus[trg], beta_per_dt)
-
-                # Generate a new random number based on the two other random numbers
-                rvs_s = self.rng_source.rvs(src)
-                rvs_t = self.rng_target.rvs(trg)
-                rvs = ss.combine_rands(rvs_s, rvs_t)
-                
-                new_cases_bool = rvs < p_transmit
-                new_cases.append(trg[new_cases_bool])
-                sources.append(src[new_cases_bool])
-                networks.append(np.full(np.count_nonzero(new_cases_bool), dtype=ss_int_, fill_value=i))
-                
-        # Tidy up
-        if len(new_cases) and len(sources):
-            new_cases = ss.uids.cat(new_cases)
-            new_cases, inds = new_cases.unique(return_index=True)
-            sources = ss.uids.cat(sources)[inds]
-            networks = np.concatenate(networks)[inds]
-        else:
-            new_cases = np.empty(0, dtype=int)
-            sources = np.empty(0, dtype=int)
-            networks = np.empty(0, dtype=int)
-
-        if len(new_cases):
-            self._set_cases(new_cases, sources)
-            
-        return new_cases, sources, networks
+        transmitted = p_transmit > randvals
+        target_uids = trg[transmitted]
+        source_uids = src[transmitted]
+        return target_uids, source_uids
 
     def set_prognoses(self, uids, source_uids=None):
         super().set_prognoses(uids, source_uids)
@@ -258,7 +202,7 @@ class Polio(ss.Infection):
 class OPV1(Polio):
     def __init__(self, pars=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.default_pars(
+        self.define_pars(
             sabin_scale_parameter=sabin_scale_parameters['OPV1'],
             strain_take_modifier=strain_take_modifiers['OPV1'],
             shed_duration=shed_duration_params['OPV'],
@@ -269,7 +213,7 @@ class OPV1(Polio):
 class OPV2(Polio):
     def __init__(self, pars=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.default_pars(
+        self.define_pars(
             sabin_scale_parameter=sabin_scale_parameters['OPV2'],
             strain_take_modifier=strain_take_modifiers['OPV2'],
             shed_duration=shed_duration_params['OPV'],
@@ -280,7 +224,7 @@ class OPV2(Polio):
 class OPV3(Polio):
     def __init__(self, pars=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.default_pars(
+        self.define_pars(
             sabin_scale_parameter=sabin_scale_parameters['OPV3'],
             strain_take_modifier=strain_take_modifiers['OPV3'],
             shed_duration=shed_duration_params['OPV'],
@@ -299,14 +243,14 @@ if __name__ == "__main__":
         diseases=[Polio(init_prev=1.0)],
         networks=[], 
         demographics=[],
-        n_years=1,
+        dur=1,
         use_aging=True,
         dt=1/365.,
         rand_seed=123,
     )
-    sim.initialize()
+    sim.init()
 
     sim.people.age[0] = 15
     sim.people.female[0] = True
 
-    sim.step()
+    sim.run_one_step()

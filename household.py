@@ -62,19 +62,19 @@ class HouseholdResidence(ss.Demographics):
 
         super().__init__()
 
-        self.default_pars(
+        self.define_pars(
             relocate_age=ss.uniform(18, 25),
         )
         self.update_pars(pars, **kwargs)
 
-        self.add_states(
+        self.define_states(
             ss.FloatArr("huid", label="Household UID"),
             ss.FloatArr("age_relocate", label="Age of relocation to own household"),
         )
 
         self.uid_gen = itertools.count(start=0, step=1)  # unique next household index generator
 
-    def update(self):
+    def step(self):
         sim = self.sim
 
         relocations = (sim.people.female & (self.age_relocate <= sim.people.age)).uids

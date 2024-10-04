@@ -1,5 +1,5 @@
 numpy
-starsim
+starsim>=2.0.0
 
 panel
 watchfiles

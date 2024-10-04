@@ -38,12 +38,12 @@ def init_matriarch_sim():
             hh_demog,
             # ss.Deaths(death_rate=30),  # TODO: understand odd behavior
             ],
-        n_years=100,
+        dur=100,  # years
         rand_seed=random.randint(0, 1000),
-        slot_scale=1000 # Won't be needed in the future, but changes on a Starsim branch
+        # slot_scale=1000 # Won't be needed in the future, but changes on a Starsim branch
     )
     
-    sim.initialize()
+    sim.init()
 
     sim.people.age[0] = 15
     sim.people.female[0] = True
